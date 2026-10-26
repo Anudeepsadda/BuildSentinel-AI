@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/
+streamlit.log
+*.log
+.env
+.venv/
+venv/
+.DS_Store
+.config/
+sample_data/

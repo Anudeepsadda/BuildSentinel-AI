@@ -1,0 +1,327 @@
+# BuildSentinel AI
+
+### Predictive Build Risk Intelligence for CI/CD Pipelines
+
+**Estimate Jenkins build failure risk before execution using code-change
+signals and historical build behavior.**
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![ML](https://img.shields.io/badge/ML-Scikit--learn-orange)](https://scikit-learn.org/)
+[![Streamlit](https://img.shields.io/badge/UI-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Tests](https://img.shields.io/badge/Tests-Pytest-0A9EDC)](https://pytest.org/)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+
+------------------------------------------------------------------------
+
+## 01 · The Idea
+
+A failed CI build can slow down a development team, interrupt a release,
+and send engineers back into debugging. **BuildSentinel AI** explores
+whether a build's risk can be estimated *before that build starts*.
+
+The project trains a machine-learning model on simulated Jenkins build
+history. It uses signals intended to be available before
+execution---such as code-change size, scheduled hour, and recent build
+outcomes---to estimate failure probability. A Streamlit interface makes
+the estimate easy to explore.
+
+> **Project scope:** This is a portfolio prototype built with synthetic
+> data. Its results demonstrate the workflow, not production readiness
+> or proven performance on a real Jenkins installation.
+
+## 02 · What It Does
+
+-   Estimates failure probability for a proposed build from pre-build
+    signals.
+-   Uses history: whether the previous build failed and how many of the
+    last five builds failed.
+-   Displays the current 30% warning threshold.
+-   Provides an interactive dashboard for exploring different build
+    scenarios.
+-   Validates prediction inputs and rejects invalid feature values.
+-   Runs automated checks through GitHub Actions.
+
+## 03 · How the System Works
+
+``` text
+Simulated Jenkins Build History
+              |
+              v
+     Feature Preparation
+              |
+              v
+ Chronological Train / Validation Split
+              |
+              v
+ StandardScaler + Logistic Regression
+              |
+              v
+  Failure Probability (0.0 - 1.0)
+              |
+              v
+  30% Warning Threshold in the App
+              |
+              v
+      Streamlit Dashboard
+```
+
+The model is trained in `src/train.py`; prediction and input validation
+live in `src/predict.py`; and `app.py` presents the result. The GitHub
+Actions workflow regenerates the data, trains the model, and runs the
+tests.
+
+## 04 · Signals the Model Uses
+
+The predictor intentionally uses features intended to be known **before
+the current build runs**. It does not use the current build's duration
+or failed-test count as prediction inputs, because those may only become
+known during or after execution.
+
+  ------------------------------------------------------------------------
+  Feature               Meaning                                    Example
+  --------------------- --------------------- ----------------------------
+  `code_changes`        Number of code lines                         `300`
+                        changed               
+
+  `hour`                Scheduled hour                                `14`
+                        (0--23)               
+
+  `prev_failure`        Whether the previous                           `0`
+                        build failed (0 or 1) 
+
+  `failure_last_5`      Failures among the                             `1`
+                        previous five builds  
+                        (0--5)                
+  ------------------------------------------------------------------------
+
+Historical features are based on **previous builds**, rather than the
+outcome of the build being predicted, to avoid using future information.
+
+## 05 · Model Evaluation
+
+The selected model is a scikit-learn Pipeline containing
+`StandardScaler` and class-weighted `LogisticRegression`. Data is split
+chronologically so later records are not randomly mixed into the earlier
+training period.
+
+### Held-out test results
+
+  Metric                              Result
+  ----------------------------- ------------
+  ROC-AUC                         **0.6602**
+  Average precision               **0.5561**
+  Brier score                     **0.2195**
+  Accuracy at 0.30 threshold       **0.537**
+  Precision at 0.30 threshold      **0.431**
+  Recall at 0.30 threshold         **0.797**
+  F1 score at 0.30 threshold       **0.560**
+
+At the current 0.30 threshold, the held-out test set produced **47 true
+positives, 39 true negatives, 62 false alarms, and 12 missed failures**.
+
+Interpret these numbers carefully:
+
+-   The dataset is synthetic and its outcomes were generated by rules;
+    these results are not evidence of real-world Jenkins performance.
+-   A lower warning threshold can catch more failures but may also flag
+    more successful builds.
+-   The threshold is a prototype setting, not a universal production
+    recommendation.
+-   Scores may vary if the data generator or split changes.
+
+## 06 · Try It in the Dashboard
+
+The Streamlit app lets you change the four pre-build signals and inspect
+the estimated failure probability.
+
+1.  Set the expected code-change count.
+2.  Select the scheduled hour.
+3.  Choose whether the previous build failed.
+4.  Enter the number of failures in the previous five builds.
+5.  Review the probability and compare it with the app's **30% warning
+    threshold**.
+
+A probability below the threshold means the app does not raise its
+high-risk warning. It does **not** guarantee that the build will
+succeed.
+
+## 07 · Repository Map
+
+``` text
+BuildSentinel-AI/
+├── app.py
+├── requirements.txt
+├── src/
+│   ├── __init__.py
+│   ├── dataset_generator.py
+│   ├── train.py
+│   ├── predict.py
+│   └── risk_engine.py
+├── tests/
+│   └── test_predict.py
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── data/
+│   └── jenkins_builds.csv
+├── models/
+│   └── build_failure_model.pkl
+├── reports/
+│   └── validation_metrics.json
+└── sample_data/
+    └── README.md
+```
+
+The dataset, trained model, and validation report are generated by
+project commands. Depending on your Git setup, these artifacts may not
+be committed. The CI workflow regenerates them when it runs.
+
+## 08 · Run It Locally
+
+### Requirements
+
+-   Python 3.10 or newer (GitHub Actions currently uses Python 3.12)
+-   `pip`
+
+### 1. Clone the repository
+
+Replace the placeholders with your GitHub repository URL and folder name
+after publishing the project.
+
+``` bash
+git clone <YOUR_REPOSITORY_URL>
+cd <YOUR_REPOSITORY_FOLDER>
+```
+
+### 2. Create and activate a virtual environment
+
+**Windows PowerShell**
+
+``` powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux**
+
+``` bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+``` bash
+python -m pip install -r requirements.txt
+```
+
+### 4. Generate the dataset
+
+``` bash
+python -m src.dataset_generator
+```
+
+This creates `data/jenkins_builds.csv`.
+
+### 5. Train the model
+
+``` bash
+python -m src.train
+```
+
+This saves `models/build_failure_model.pkl` and writes validation
+metrics to `reports/validation_metrics.json`.
+
+### 6. Launch the dashboard
+
+``` bash
+streamlit run app.py
+```
+
+Open the local URL printed by Streamlit in your browser.
+
+### 7. Run the tests
+
+``` bash
+python -m pytest tests/ -v
+```
+
+The current prediction test suite contains **13 tests** covering valid
+input formats, missing or extra features, and invalid feature values.
+
+## 09 · Run the Workflow in Google Colab
+
+Run these commands from the project root in separate notebook cells:
+
+``` python
+!python -m pip install -r requirements.txt
+```
+
+``` python
+!python -m src.dataset_generator
+!python -m src.train
+!python -m pytest tests/ -v
+```
+
+To start Streamlit in Colab, use the port-proxy approach already
+configured in your notebook. A standard `streamlit run app.py` command
+alone may not display the app inline.
+
+## 10 · Tools and Engineering Practices
+
+  -----------------------------------------------------------------------
+  Area                                Tools / approach
+  ----------------------------------- -----------------------------------
+  Language                            Python
+
+  Data handling                       pandas, NumPy
+
+  Machine learning                    scikit-learn, Logistic Regression
+
+  Model persistence                   joblib
+
+  Interactive UI                      Streamlit
+
+  Testing                             pytest
+
+  Automation                          GitHub Actions
+
+  Evaluation                          ROC-AUC, average precision, Brier
+                                      score, precision, recall, F1
+  -----------------------------------------------------------------------
+
+Engineering practices demonstrated include chronological evaluation,
+separation of training and prediction code, input validation, automated
+tests, and a repeatable CI workflow.
+
+## 11 · Current Limitations and Next Steps
+
+This is an initial, reproducible prototype---not a production
+deployment. Useful next steps include:
+
+-   Validate against real Jenkins build history and compare performance
+    with a simple baseline.
+-   Add a data-ingestion path from Jenkins or a build-history export.
+-   Track model versions and evaluation results across datasets.
+-   Assess probability calibration on a sufficiently large,
+    representative real dataset.
+-   Tune the warning threshold based on the relative cost of false
+    alarms and missed failures.
+-   Add monitoring for data drift and changing build behavior.
+
+## 12 · Why This Project Matters
+
+BuildSentinel AI brings together a complete small-scale ML workflow:
+synthetic data generation, time-aware evaluation, model training,
+validated prediction inputs, an interactive application, automated
+tests, and CI automation.
+
+The central engineering question is not simply *"Can a model classify a
+failure?"* It is *"What useful warning can we provide before a build
+starts, using only information available at that moment?"*
+
+------------------------------------------------------------------------
+
+**Built as a learning and portfolio project.** Predictions are
+estimates, not guarantees, and should not be used to automatically block
+production deployments without validation on real data.
